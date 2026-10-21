@@ -71,3 +71,46 @@ function removeTypist(roomId, username) {
 
 // --- Initialize database ---
 initDB();
+
+// --- Socket.IO connection handler ---
+io.on('connection', (socket) => {
+  console.log(`[SOCKET] User connected: ${socket.id}`);
+
+  // --- JOIN EVENT ---
+  socket.on('join', ({ roomId, username }) => {
+    console.log(`[JOIN] ${username} joining room ${roomId}`);
+
+    if (!roomExists(roomId)) {
+      socket.emit('join-error', { message: 'Room does not exist.' });
+      return;
+    }
+
+    socket.join(roomId);
+
+    const joinedAt = Date.now();
+    presence.set(socket.id, { username, roomId, joinedAt });
+    setPresence(socket.id, username, roomId);
+    clientState.set(socket.id, { roomId, lastMessageId: 0 });
+
+    const history = getMessages(roomId, 200);
+    socket.emit('history', history);
+    broadcastPresence(roomId);
+    socket.to(roomId).emit('user-joined', { username, joinedAt });
+
+    if (!typingState.has(roomId)) typingState.set(roomId, new Set());
+  });
+
+  // --- LEAVE EVENT ---
+  socket.on('leave', ({ roomId }) => {
+    socket.leave(roomId);
+    const info = presence.get(socket.id);
+    if (info) {
+      const leavingUsername = info.username;
+      presence.delete(socket.id);
+      deletePresence(socket.id);
+      clientState.delete(socket.id);
+      removeTypist(roomId, leavingUsername);
+      broadcastPresence(roomId);
+      socket.to(roomId).emit('user-left', { username: leavingUsername });
+    }
+  });
