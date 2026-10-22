@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: real-time-collab-app
+    runtime: node
+    buildCommand: npm install && cd client && npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: /data/database.sqlite
+
+# Render automatically provisions a free PostgreSQL database if you add one,
+# but this app uses SQLite (embedded) which works on Render's persistent disk.
+# The /data directory is Render's writable volume that persists across restarts.
