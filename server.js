@@ -27,12 +27,16 @@ const io = new Server(server, {
 });
 
 // Serve static React build in production
+// Vite builds to <project-root>/dist (configured in client/vite.config.js)
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'client', 'dist')));
+  const clientDistPath = path.join(__dirname, 'dist');
+  app.use(express.static(clientDistPath));
   app.get('*', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
+    res.sendFile(path.join(clientDistPath, 'index.html'));
   });
 }
+// Health check endpoint
+app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
 
 // --- In-memory presence map: socketId -> { username, roomId, joinedAt } ---
 const presence = new Map();

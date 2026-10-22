@@ -22,7 +22,6 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
   const [lastMessageId, setLastMessageId] = useState(0);
   const [joinError, setJoinError] = useState('');
   const typingDebounceRef = useRef(null);
-  const reconnectAttemptedRef = useRef(false);
 
   // --- Socket.IO event listeners ---
   useEffect(() => {
@@ -86,23 +85,21 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
     };
   }, [username]);
 
-  // --- Re-emit join on socket reconnection ---
+  // --- Reconnection: request catch-up after re-joining (App.jsx re-emits 'join') ---
+  const wasConnectedRef = useRef(false);
   useEffect(() => {
     const handleConnect = () => {
-      if (connectionStatus === 'connected' && !reconnectAttemptedRef.current) {
-        socket.emit('join', { roomId, username });
-        if (lastMessageId > 0) {
-          socket.emit('catch-up', { roomId, lastMessageId });
-        }
-        reconnectAttemptedRef.current = true;
-        setTimeout(() => { reconnectAttemptedRef.current = false; }, 1000);
+      if (wasConnectedRef.current && lastMessageId > 0) {
+        // We were previously connected — request any missed messages
+        socket.emit('catch-up', { roomId, lastMessageId });
       }
+      wasConnectedRef.current = true;
     };
-    const handleDisconnect = () => { reconnectAttemptedRef.current = false; };
+    const handleDisconnect = () => { wasConnectedRef.current = false; };
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     return () => { socket.off('connect', handleConnect); socket.off('disconnect', handleDisconnect); };
-  }, [roomId, username, connectionStatus, lastMessageId]);
+  }, [roomId, lastMessageId]);
 
   // --- Handle actions from MessageInput ---
   const handleInputAction = useCallback((action) => {
