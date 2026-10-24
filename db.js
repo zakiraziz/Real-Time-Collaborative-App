@@ -47,6 +47,13 @@ function initDB() {
 
     CREATE INDEX IF NOT EXISTS idx_messages_room_ts ON messages(room_id, timestamp, id);
     CREATE INDEX IF NOT EXISTS idx_messages_client  ON messages(client_id);
+
+    CREATE TABLE IF NOT EXISTS users (
+      socket_id  TEXT PRIMARY KEY,
+      username   TEXT NOT NULL,
+      room_id    TEXT NOT NULL,
+      joined_at  INTEGER NOT NULL
+    );
   `);
 }
 
