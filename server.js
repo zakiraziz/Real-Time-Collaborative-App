@@ -28,7 +28,7 @@ const io = new Server(server, {
 });
 
 // Serve static React build in production
-// Vite builds to <project-root>/dist (configured in client/vite.config.js)
+// Vite builds to <project-root>/dist (configured in client/vite.config.mjs)
 if (process.env.NODE_ENV === 'production') {
   const clientDistPath = path.join(__dirname, 'dist');
   app.use(express.static(clientDistPath));

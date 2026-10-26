@@ -20,7 +20,7 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
   const [onlineUsers, setOnlineUsers] = useState(initialUsers);
   const [typingUsers, setTypingUsers] = useState([]);
   const [lastMessageId, setLastMessageId] = useState(
-    initialHistory.length ? initialHistory[initialHistory.length - 1].id : 0
+    initialHistory.length ? Math.max(...initialHistory.map((message) => message.id)) : 0
   );
   const [joinError, setJoinError] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
@@ -30,9 +30,6 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
   useEffect(() => {
     const handleHistory = (history) => {
       setMessages(history || []);
-      if (history && history.length > 0) {
-        setLastMessageId(history[history.length - 1].id);
-      }
     };
 
     const handleHistoryCatchUp = (missed) => {
@@ -44,7 +41,6 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
           if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
           return a.id - b.id;
         });
-        setLastMessageId(Math.max(...merged.map((m) => m.id)));
         return merged;
       });
     };
@@ -56,7 +52,6 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
           if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
           return a.id - b.id;
         });
-        setLastMessageId(Math.max(...updated.map((m) => m.id)));
         return updated;
       });
     };
@@ -88,6 +83,12 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
       if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
     };
   }, [username]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setLastMessageId(Math.max(...messages.map((message) => message.id)));
+    }
+  }, [messages]);
 
   // --- Reconnection: request catch-up after re-joining (App.jsx re-emits 'join') ---
   const wasConnectedRef = useRef(false);

@@ -9,8 +9,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "install:all": "npm install && cd client && npm install",
     "build": "npm --prefix client run build",
-    "start": "node server.js",
-    "seed": "node scripts/seed.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
