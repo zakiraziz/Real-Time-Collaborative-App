@@ -35,18 +35,26 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .form-group label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-muted); }
 .form-group input { width: 100%; padding: 0.85rem 1rem; background: var(--surface-2); border: 1.5px solid var(--border); border-radius: var(--radius-sm); font-size: 1rem; color: var(--text); transition: var(--transition); outline: none; }
 .form-group input:focus { border-color: var(--primary); background: #262a3d; box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.15); }
+.field-help { display: block; color: var(--text-muted); font-size: 0.78rem; margin-top: 0.45rem; }
+.form-message { padding: 0.75rem 0.9rem; margin-bottom: 1rem; border: 1px solid rgba(255, 107, 107, 0.35); border-radius: var(--radius-sm); background: rgba(255, 107, 107, 0.1); color: var(--danger); font-size: 0.88rem; line-height: 1.45; }
+.welcome-copy { color: var(--text-muted); font-size: 0.9rem; }
 .btn { width: 100%; padding: 0.9rem 1.25rem; border: none; border-radius: var(--radius-sm); font-size: 1rem; font-weight: 600; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(79, 124, 255, 0.35); }
 .btn-secondary { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
 .btn-secondary:hover { background: var(--surface-2); }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .room-actions { margin-top: 1.5rem; display: flex; gap: 1rem; }
 .room-code-display { margin-top: 1rem; padding: 0.8rem 1.25rem; background: var(--surface-2); border-radius: var(--radius-sm); font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: 600; text-align: center; letter-spacing: 0.1em; color: var(--accent); border: 1px dashed var(--border); word-break: break-all; }
 
 /* ===== Copy button ===== */
 .copy-btn { margin-top: 0.75rem; padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; transition: var(--transition); }
 .copy-btn:hover { background: var(--primary); color: #fff; }
+.copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.leave-btn { color: var(--danger); }
+.room-error { padding: 0.75rem 1rem; background: rgba(255, 107, 107, 0.12); color: var(--danger); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.75rem; font-size: 0.88rem; }
+.room-error button { border: 1px solid currentColor; border-radius: 6px; padding: 0.35rem 0.65rem; background: transparent; color: inherit; cursor: pointer; }
 .copy-link { color: var(--accent); cursor: pointer; font-size: 0.8rem; margin-top: 0.5rem; display: inline-block; }
 
 /* ===== Room View ===== */
@@ -66,6 +74,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 /* ===== Chat Container ===== */
 .chat-container { flex: 1; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
 .room-header { padding: 1rem 1.5rem; background: var(--surface-2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.room-actions-header { display: flex; align-items: center; gap: 0.75rem; }
 .room-header .room-title { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; }
 .room-header .room-code { font-family: 'Courier New', monospace; font-size: 0.9rem; color: var(--accent); background: var(--surface); padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); }
 .connection-status { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
@@ -73,6 +82,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .status-connected .connection-dot { background: var(--accent); }
 .status-connecting .connection-dot { background: var(--warning); animation: pulse 1.5s infinite; }
 .status-disconnected .connection-dot { background: var(--danger); }
+.status-error .connection-dot { background: var(--danger); }
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
 /* ===== Messages ===== */
@@ -105,9 +115,11 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .send-btn { width: 46px; height: 46px; border-radius: 50%; border: none; background: var(--primary); color: #fff; font-size: 1.1rem; cursor: pointer; transition: var(--transition); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .send-btn:hover { background: var(--primary-hover); transform: scale(1.05); box-shadow: 0 4px 16px rgba(79, 124, 255, 0.4); }
 .send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.send-error { flex-basis: 100%; color: var(--danger); font-size: 0.8rem; }
 
 /* ===== Responsive ===== */
-@media (max-width: 768px) { .room-view { flex-direction: column; height: calc(100vh - 4rem); padding: 0.75rem; } .presence-sidebar { width: 100%; max-width: none; height: 120px; } .message-bubble { max-width: 85%; } }
+@media (max-width: 768px) { .room-view { flex-direction: column; height: 100dvh; padding: 0.5rem; gap: 0.5rem; } .presence-sidebar { width: 100%; max-width: none; min-width: 0; height: 92px; min-height: 92px; } .presence-list { display: flex; overflow-x: auto; overflow-y: hidden; padding: 0.5rem; gap: 0.35rem; } .presence-user { flex: 0 0 auto; margin: 0; } .message-bubble { max-width: 85%; } .room-header { padding: 0.75rem; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; } .room-header .room-title { font-size: 0.95rem; gap: 0.45rem; } .room-actions-header { flex-wrap: wrap; gap: 0.35rem; } .copy-btn { margin-top: 0.25rem; } .message-input-container { padding: 0.75rem; } }
+@media (max-width: 420px) { .login-card { padding: 1.5rem; } .room-actions { flex-direction: column; gap: 0.6rem; } .room-header .room-title { width: 100%; } .room-actions-header { justify-content: space-between; width: 100%; } .connection-status { font-size: 0.72rem; } .copy-btn { font-size: 0.72rem; } }
 
 /* ===== Utility ===== */
 .fade-in { animation: fade-in 0.2s ease-out; }

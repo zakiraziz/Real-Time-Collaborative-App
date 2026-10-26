@@ -1,22 +1,24 @@
 /**
- * Database module using better-sqlite3.
- * 
- * SQLite is used for development and small-scale deployment.
+ * Database module using Node.js built-in node:sqlite (DatabaseSync).
+ *
+ * Node v22+ ships with an experimental SQLite binding — no native compilation
+ * required, so no Visual Studio build tools needed.
+ *
  * The interface is designed so that switching to PostgreSQL only requires
  * replacing this module (use the `pg` package) without touching server.js.
  */
 
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 
 // Use a file-based DB so data persists across restarts.
 // In production on Render/Fly, SQLite works on their mounted volumes.
 const dbPath = process.env.DATABASE_URL || path.join(__dirname, 'database.sqlite');
-const db = new Database(dbPath);
+const db = new DatabaseSync(dbPath);
 
-// Ensure row-level concurrency safety
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+// Ensure concurrent read/write safety (PRAGMA via exec, not pragma method)
+db.exec('PRAGMA journal_mode = WAL;');
+db.exec('PRAGMA foreign_keys = ON;');
 
 /**
  * Initialize database schema.
@@ -56,6 +58,10 @@ function initDB() {
     );
   `);
 }
+
+// Create tables immediately so prepared statements don't fail at prepare-time.
+// node:sqlite validates SQL against the schema during prepare().
+initDB();
 
 // --- Room operations ---
 
@@ -138,9 +144,8 @@ function getMessagesSince(roomId, lastId, limit = 100) {
 // --- User/presence operations (optional persistence) ---
 
 const upsertPresenceStmt = db.prepare(`
-  INSERT INTO users (socket_id, username, room_id, joined_at)
+  INSERT OR REPLACE INTO users (socket_id, username, room_id, joined_at)
   VALUES (?, ?, ?, ?)
-  ON CONFLICT(socket_id) DO UPDATE SET username = excluded.username, room_id = excluded.room_id, joined_at = excluded.joined_at
 `);
 
 const deletePresenceStmt = db.prepare('DELETE FROM users WHERE socket_id = ?');

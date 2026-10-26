@@ -5,10 +5,11 @@ import { useState, useRef, useEffect } from 'react';
  * Emits 'typing' while the user is composing, and 'stop-typing' when done.
  * Uses crypto.randomUUID() to generate a client_id for dedup (CRDT-lite).
  */
-export default function MessageInput({ roomId, username, onSendMessage }) {
+export default function MessageInput({ roomId, username, onSendMessage, disabled = false }) {
   const [message, setMessage] = useState('');
+  const [sendError, setSendError] = useState('');
+  const [sending, setSending] = useState(false);
   const inputRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
 
   // Auto-focus the input
   useEffect(() => {
@@ -25,6 +26,7 @@ export default function MessageInput({ roomId, username, onSendMessage }) {
   const handleChange = (e) => {
     const value = e.target.value;
     setMessage(value);
+    setSendError('');
 
     // Emit typing events while composing
     if (value.trim().length > 0) {
@@ -38,26 +40,36 @@ export default function MessageInput({ roomId, username, onSendMessage }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     const trimmed = message.trim();
-    if (!trimmed) return;
+    if (!trimmed || sending || disabled) return;
 
     // Generate a client UUID for deduplication (CRDT-lite)
     const clientId = crypto.randomUUID();
     const timestamp = Date.now();
 
-    onSendMessage({
-      type: 'send',
-      payload: {
-        roomId,
-        username,
-        content: trimmed,
-        timestamp,
-        clientId,
-        version: 1,
+    setSending(true);
+    setSendError('');
+    onSendMessage(
+      {
+        type: 'send',
+        payload: {
+          roomId,
+          username,
+          content: trimmed,
+          timestamp,
+          clientId,
+          version: 1,
+        },
       },
-    });
-
-    setMessage('');
-    onSendMessage({ type: 'stop-typing' });
+      (error) => {
+        setSending(false);
+        if (error) {
+          setSendError(error);
+          return;
+        }
+        setMessage('');
+        onSendMessage({ type: 'stop-typing' });
+      }
+    );
   };
 
   return (
@@ -76,15 +88,19 @@ export default function MessageInput({ roomId, username, onSendMessage }) {
           }
         }}
         maxLength={2000}
+        disabled={disabled}
+        aria-label="Write a message"
+        aria-describedby={sendError ? 'message-send-error' : undefined}
       />
       <button
         type="submit"
         className="send-btn"
-        disabled={!message.trim()}
+        disabled={!message.trim() || disabled || sending}
         title="Send message"
       >
-        {message.trim() ? '→' : '⭕'}
+        {sending ? '…' : message.trim() ? '→' : '⭕'}
       </button>
+      {sendError && <span id="message-send-error" className="send-error" role="alert">{sendError}</span>}
     </form>
   );
 }

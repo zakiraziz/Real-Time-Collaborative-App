@@ -1,8 +1,9 @@
 /**
  * Real-Time Collaborative App — Server
- * Stack: Node.js + Express + Socket.IO + better-sqlite3
+ * Stack: Node.js + Express + Socket.IO + SQLite
  */
 require('dotenv').config();
+const { randomInt } = require('crypto');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -31,46 +32,125 @@ const io = new Server(server, {
 if (process.env.NODE_ENV === 'production') {
   const clientDistPath = path.join(__dirname, 'dist');
   app.use(express.static(clientDistPath));
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(clientDistPath, 'index.html'));
-  });
 }
 // Health check endpoint
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: Date.now() }));
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
 
 // --- In-memory presence map: socketId -> { username, roomId, joinedAt } ---
 const presence = new Map();
 // --- Client state for catch-up: socketId -> { roomId, lastMessageId } ---
 const clientState = new Map();
-// --- Typing state: roomId -> Set<username> ---
+// --- Typing state: roomId -> Set<socketId> ---
 const typingState = new Map();
 
 const TYPING_TIMEOUT_MS = 3000;
-const typingTimers = new Map(); // roomId:username -> timeout
+const typingTimers = new Map();
 
 function getTypists(roomId) {
-  return Array.from(typingState.get(roomId) || []);
+  return Array.from(new Set(
+    Array.from(typingState.get(roomId) || [])
+      .map(socketId => presence.get(socketId)?.username)
+      .filter(Boolean)
+  ));
 }
 
 function broadcastPresence(roomId) {
   const users = Array.from(presence.values())
     .filter(u => u.roomId === roomId)
-    .map(u => ({ username: u.username, joinedAt: u.joinedAt }));
+    .map(u => ({ socketId: u.socketId, username: u.username, joinedAt: u.joinedAt }));
   io.to(roomId).emit('presence', users);
+  return users;
 }
 
-function removeTypist(roomId, username) {
+function removeTypist(roomId, socketId) {
   const typists = typingState.get(roomId);
   if (typists) {
-    typists.delete(username);
+    typists.delete(socketId);
     if (typists.size === 0) typingState.delete(roomId);
     io.to(roomId).emit('typing-update', getTypists(roomId));
   }
-  const timerKey = `${roomId}:${username}`;
+  const timerKey = `${roomId}:${socketId}`;
   if (typingTimers.has(timerKey)) {
     clearTimeout(typingTimers.get(timerKey));
     typingTimers.delete(timerKey);
   }
+}
+
+function validUsername(username) {
+  return typeof username === 'string' && username.trim().length > 0 && username.trim().length <= 30;
+}
+
+function validRoomId(roomId) {
+  return typeof roomId === 'string' && /^[A-Z0-9]{6}$/.test(roomId);
+}
+
+function joinRoom(socket, roomId, username, ack) {
+  const cleanUsername = typeof username === 'string' ? username.trim() : '';
+  if (!validRoomId(roomId) || !validUsername(cleanUsername)) {
+    const result = { success: false, error: 'Enter a valid name and six-character room code.' };
+    socket.emit('join-error', { message: result.error });
+    if (typeof ack === 'function') ack(result);
+    return;
+  }
+  if (!roomExists(roomId)) {
+    const result = { success: false, error: 'That room could not be found. Check the code or create a new room.' };
+    socket.emit('join-error', { message: result.error });
+    if (typeof ack === 'function') ack(result);
+    return;
+  }
+
+  const previous = presence.get(socket.id);
+  if (previous && previous.roomId !== roomId) {
+    socket.leave(previous.roomId);
+    presence.delete(socket.id);
+    deletePresence(socket.id);
+    removeTypist(previous.roomId, socket.id);
+    broadcastPresence(previous.roomId);
+    socket.to(previous.roomId).emit('user-left', { username: previous.username });
+  }
+
+  const joinedAt = Date.now();
+  socket.join(roomId);
+  presence.set(socket.id, { socketId: socket.id, username: cleanUsername, roomId, joinedAt });
+  setPresence(socket.id, cleanUsername, roomId);
+  clientState.set(socket.id, { roomId, lastMessageId: 0 });
+
+  const history = getMessages(roomId, 200);
+  socket.emit('history', history);
+  const users = broadcastPresence(roomId);
+  socket.to(roomId).emit('user-joined', { username: cleanUsername, joinedAt });
+  if (!typingState.has(roomId)) typingState.set(roomId, new Set());
+
+  if (typeof ack === 'function') {
+    ack({ success: true, roomId, history, users });
+  }
+}
+
+function createRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let roomId;
+  do {
+    roomId = Array.from({ length: 6 }, () => chars[randomInt(chars.length)]).join('');
+  } while (roomExists(roomId));
+  return roomId;
+}
+
+function leaveRoom(socket, reason) {
+  const info = presence.get(socket.id);
+  if (!info) return;
+
+  socket.leave(info.roomId);
+  presence.delete(socket.id);
+  deletePresence(socket.id);
+  clientState.delete(socket.id);
+  removeTypist(info.roomId, socket.id);
+  broadcastPresence(info.roomId);
+  socket.to(info.roomId).emit('user-left', { username: info.username, reason });
 }
 
 // --- Initialize database ---
@@ -81,64 +161,53 @@ io.on('connection', (socket) => {
   console.log(`[SOCKET] User connected: ${socket.id}`);
 
   // --- JOIN EVENT ---
-  socket.on('join', ({ roomId, username }) => {
-    console.log(`[JOIN] ${username} joining room ${roomId}`);
+  socket.on('join', (payload = {}, ack) => {
+    const { roomId, username } = payload || {};
+    joinRoom(socket, roomId, username, ack);
+  });
 
-    if (!roomExists(roomId)) {
-      socket.emit('join-error', { message: 'Room does not exist.' });
+  socket.on('create-room', (payload = {}, ack) => {
+    const { username } = payload || {};
+    if (!validUsername(username)) {
+      if (typeof ack === 'function') ack({ success: false, error: 'Your name must be between 1 and 30 characters.' });
       return;
     }
 
-    socket.join(roomId);
-
-    const joinedAt = Date.now();
-    presence.set(socket.id, { username, roomId, joinedAt });
-    setPresence(socket.id, username, roomId);
-    clientState.set(socket.id, { roomId, lastMessageId: 0 });
-
-    const history = getMessages(roomId, 200);
-    socket.emit('history', history);
-    broadcastPresence(roomId);
-    socket.to(roomId).emit('user-joined', { username, joinedAt });
-
-    if (!typingState.has(roomId)) typingState.set(roomId, new Set());
+    const roomId = createRoomCode();
+    createRoom(roomId, roomId, username.trim());
+    joinRoom(socket, roomId, username, ack);
   });
 
   // --- LEAVE EVENT ---
-  socket.on('leave', ({ roomId }) => {
-    socket.leave(roomId);
-    const info = presence.get(socket.id);
-    if (info) {
-      const leavingUsername = info.username;
-      presence.delete(socket.id);
-      deletePresence(socket.id);
-      clientState.delete(socket.id);
-      removeTypist(roomId, leavingUsername);
-      broadcastPresence(roomId);
-      socket.to(roomId).emit('user-left', { username: leavingUsername });
-    }
+  socket.on('leave', () => {
+    leaveRoom(socket);
   });
 
   // --- MESSAGE EVENT ---
   socket.on('message', (payload, ack) => {
-    const { roomId, content, username, timestamp, clientId, version } = payload;
-    if (!roomId || !content || !username) {
-      if (ack) ack({ error: 'Missing required fields' });
+    const info = presence.get(socket.id);
+    const { roomId, content, clientId, timestamp, version } = payload || {};
+    if (!info || info.roomId !== roomId || !socket.rooms.has(roomId)) {
+      if (ack) ack({ error: 'Join this room before sending a message.' });
+      return;
+    }
+    if (typeof content !== 'string' || !content.trim() || content.trim().length > 2000) {
+      if (ack) ack({ error: 'Messages must be between 1 and 2000 characters.' });
       return;
     }
 
     const saved = saveMessage({
-      roomId, userId: socket.id, username, content,
-      timestamp: timestamp || Date.now(),
+      roomId, userId: socket.id, username: info.username, content: content.trim(),
+      timestamp: Number.isSafeInteger(timestamp) ? timestamp : Date.now(),
       clientId: clientId || null,
-      version: version || 1
+      version: Number.isSafeInteger(version) && version > 0 ? version : 1
     });
 
     if (saved) {
       const state = clientState.get(socket.id);
       if (state && state.roomId === roomId) state.lastMessageId = saved.id;
       io.to(roomId).emit('message', saved);
-      removeTypist(roomId, username);
+      removeTypist(roomId, socket.id);
       if (ack) ack({ success: true, message: saved });
     } else {
       if (ack) ack({ success: true, duplicate: true });
@@ -146,36 +215,37 @@ io.on('connection', (socket) => {
   });
 
   // --- TYPING EVENT ---
-  socket.on('typing', ({ roomId, username }) => {
+  socket.on('typing', (payload = {}) => {
+    const { roomId } = payload || {};
+    const info = presence.get(socket.id);
+    if (!info || info.roomId !== roomId || !socket.rooms.has(roomId)) return;
     if (!typingState.has(roomId)) typingState.set(roomId, new Set());
-    typingState.get(roomId).add(username);
+    typingState.get(roomId).add(socket.id);
     socket.to(roomId).emit('typing-update', getTypists(roomId));
-    const timerKey = `${roomId}:${username}`;
+    const timerKey = `${roomId}:${socket.id}`;
     if (typingTimers.has(timerKey)) clearTimeout(typingTimers.get(timerKey));
-    typingTimers.set(timerKey, setTimeout(() => removeTypist(roomId, username), TYPING_TIMEOUT_MS));
+    typingTimers.set(timerKey, setTimeout(() => removeTypist(roomId, socket.id), TYPING_TIMEOUT_MS));
   });
 
   // --- STOP TYPING EVENT ---
-  socket.on('stop-typing', ({ roomId, username }) => removeTypist(roomId, username));
+  socket.on('stop-typing', (payload = {}) => {
+    const { roomId } = payload || {};
+    const info = presence.get(socket.id);
+    if (info && info.roomId === roomId) removeTypist(roomId, socket.id);
+  });
 
   // --- CATCH-UP EVENT ---
-  socket.on('catch-up', ({ roomId, lastMessageId }) => {
+  socket.on('catch-up', (payload = {}) => {
+    const { roomId, lastMessageId } = payload || {};
+    const info = presence.get(socket.id);
+    if (!info || info.roomId !== roomId || !socket.rooms.has(roomId)) return;
     const missed = getMessagesSince(roomId, lastMessageId || 0, 100);
     socket.emit('history-catch-up', missed);
   });
 
   // --- DISCONNECT ---
   socket.on('disconnect', (reason) => {
-    const info = presence.get(socket.id);
-    if (info) {
-      const { username, roomId } = info;
-      presence.delete(socket.id);
-      deletePresence(socket.id);
-      clientState.delete(socket.id);
-      removeTypist(roomId, username);
-      broadcastPresence(roomId);
-      socket.to(roomId).emit('user-left', { username, reason });
-    }
+    leaveRoom(socket, reason);
   });
 });
 

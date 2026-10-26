@@ -7,7 +7,6 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      // Proxy Socket.IO connections to the backend during development
       '/socket.io': {
         target: 'http://localhost:3001',
         ws: true,

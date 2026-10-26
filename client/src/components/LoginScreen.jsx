@@ -1,44 +1,42 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
 /**
  * LoginScreen — Entry point for new sessions.
  * Users enter a username, then either create a new room or join an existing one.
  * Room codes are 6-character alphanumeric strings.
  */
-export default function LoginScreen({ onJoin }) {
+export default function LoginScreen({ onJoin, notice = '' }) {
   const [username, setUsername] = useState('');
-  const [roomCode, setRoomCode] = useState('');
-  const [step, setStep] = useState('enter-name'); // 'enter-name' | 'choose-action' | 'join-room'
-  const [error, setError] = useState('');
+  const sharedRoomCode = new URLSearchParams(window.location.search).get('room') || '';
+  const [roomCode, setRoomCode] = useState(sharedRoomCode.toUpperCase());
+  const [step, setStep] = useState('enter-name');
+  const [error, setError] = useState(notice);
+  const [busy, setBusy] = useState(false);
 
-  const generateRoomCode = useCallback(() => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid ambiguous chars
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return code;
-  }, []);
-
-  const handleCreateRoom = () => {
+  const submitJoin = (createRoom) => {
     if (!username.trim()) {
-      setError('Please enter a username first.');
+      setError('Please enter your name first.');
+      setStep('enter-name');
       return;
     }
-    const code = generateRoomCode();
-    onJoin({ username: username.trim(), roomId: code });
-  };
+    if (!createRoom && !/^[A-Z0-9]{6}$/.test(roomCode.trim())) {
+      setError('Room codes are six letters or numbers. Please check the code and try again.');
+      return;
+    }
 
-  const handleJoinRoom = () => {
-    if (!username.trim()) {
-      setError('Please enter a username first.');
-      return;
-    }
-    if (!roomCode.trim()) {
-      setError('Please enter a room code.');
-      return;
-    }
-    onJoin({ username: username.trim(), roomId: roomCode.trim().toUpperCase() });
+    setError('');
+    setBusy(true);
+    onJoin(
+      {
+        username: username.trim(),
+        roomId: roomCode.trim().toUpperCase(),
+        createRoom,
+      },
+      (result) => {
+        setBusy(false);
+        if (!result.success) setError(result.error);
+      }
+    );
   };
 
   const handleNext = () => {
@@ -47,14 +45,16 @@ export default function LoginScreen({ onJoin }) {
       return;
     }
     setError('');
-    setStep('choose-action');
+    setStep(sharedRoomCode ? 'join-room' : 'choose-action');
   };
 
   return (
     <div className="login-screen">
       <div className="login-card">
         <h1>✦ Real-Time Collab</h1>
-        <p className="subtitle">Chat with friends in real time</p>
+        <p className="subtitle">A simple place to chat together, in real time.</p>
+
+        {error && <p className="form-message" role="alert">{error}</p>}
 
         {step === 'enter-name' && (
           <>
@@ -63,17 +63,21 @@ export default function LoginScreen({ onJoin }) {
               <input
                 id="username"
                 type="text"
-                placeholder="Enter your name..."
+                autoComplete="nickname"
+                placeholder="What should we call you?"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError('');
+                }}
                 onKeyDown={(e) => e.key === 'Enter' && handleNext()}
                 maxLength={30}
+                aria-describedby="name-help"
               />
+              <small id="name-help" className="field-help">Up to 30 characters. No account needed.</small>
             </div>
 
-            {error && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</p>}
-
-            <button className="btn btn-primary" onClick={handleNext}>
+            <button className="btn btn-primary" onClick={handleNext} disabled={busy}>
               Continue
             </button>
           </>
@@ -82,22 +86,20 @@ export default function LoginScreen({ onJoin }) {
         {step === 'choose-action' && (
           <>
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              <p className="welcome-copy">
                 Welcome, <strong>{username}</strong>!
               </p>
             </div>
 
-            {error && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</p>}
-
-            <button className="btn btn-primary" onClick={handleCreateRoom}>
-              🚀 Create New Room
+            <button className="btn btn-primary" onClick={() => submitJoin(true)} disabled={busy}>
+              {busy ? 'Creating your room…' : 'Create a new room'}
             </button>
 
             <div className="room-actions">
-              <button className="btn btn-secondary" onClick={() => setStep('join-room')}>
-                🔗 Join with Code
+              <button className="btn btn-secondary" onClick={() => setStep('join-room')} disabled={busy}>
+                Join with a room code
               </button>
-              <button className="btn btn-secondary" onClick={() => setStep('enter-name')}>
+              <button className="btn btn-secondary" onClick={() => setStep('enter-name')} disabled={busy}>
                 Change Name
               </button>
             </div>
@@ -111,22 +113,26 @@ export default function LoginScreen({ onJoin }) {
               <input
                 id="room-code"
                 type="text"
-                placeholder="Enter room code..."
+                autoComplete="off"
+                placeholder="e.g. A3BC7D"
                 value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
+                onChange={(e) => {
+                  setRoomCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6));
+                  setError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && submitJoin(false)}
                 maxLength={6}
+                aria-describedby="room-code-help"
               />
+              <small id="room-code-help" className="field-help">Ask the room creator for their six-character code.</small>
             </div>
 
-            {error && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</p>}
-
-            <button className="btn btn-primary" onClick={handleJoinRoom}>
-              Join Room
+            <button className="btn btn-primary" onClick={() => submitJoin(false)} disabled={busy}>
+              {busy ? 'Joining room…' : 'Join room'}
             </button>
 
             <div className="room-actions">
-              <button className="btn btn-secondary" onClick={() => setStep('choose-action')}>
+              <button className="btn btn-secondary" onClick={() => setStep(sharedRoomCode ? 'enter-name' : 'choose-action')} disabled={busy}>
                 ← Back
               </button>
             </div>

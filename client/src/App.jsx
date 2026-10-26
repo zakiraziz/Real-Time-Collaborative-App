@@ -1,103 +1,137 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import socket from './socket';
 import LoginScreen from './components/LoginScreen';
 import Room from './components/Room';
 
-/**
- * App.jsx — Root component
- * Manages session state (username, roomId) and Socket.IO lifecycle.
- * 
- * On initial load, checks localStorage for a saved session.
- * On socket reconnect, re-emits 'join' automatically.
- */
-export default function App() {
-  const [session, setSession] = useState(() => {
-    // Restore session from localStorage on initial load
-    const saved = localStorage.getItem('collab-session');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        localStorage.removeItem('collab-session');
-      }
+function readSavedSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('collab-session') || 'null');
+    if (
+      saved &&
+      typeof saved.username === 'string' &&
+      typeof saved.roomId === 'string'
+    ) {
+      return { username: saved.username, roomId: saved.roomId };
     }
-    return null;
-  });
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const socketRef = useRef(socket);
+  } catch {
+    localStorage.removeItem('collab-session');
+  }
+  return null;
+}
 
-  // Persist session to localStorage
+export default function App() {
+  const [session, setSession] = useState(readSavedSession);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  const [loginNotice, setLoginNotice] = useState('');
+  const sessionRef = useRef(session);
+
   useEffect(() => {
+    sessionRef.current = session;
     if (session) {
-      localStorage.setItem('collab-session', JSON.stringify(session));
+      localStorage.setItem(
+        'collab-session',
+        JSON.stringify({ username: session.username, roomId: session.roomId })
+      );
     } else {
       localStorage.removeItem('collab-session');
     }
   }, [session]);
 
-  // --- Socket.IO connection status monitoring ---
-  useEffect(() => {
-    const s = socketRef.current;
-
-    const onConnect = () => {
-      console.log('[SOCKET] Connected');
-      setConnectionStatus('connected');
-
-      // If we have a session, re-join the room on reconnect
-      if (session) {
-        console.log('[SOCKET] Re-joining room on reconnect:', session.roomId);
-        s.emit('join', { roomId: session.roomId, username: session.username });
-      }
-    };
-
-    const onDisconnect = (reason) => {
-      console.log('[SOCKET] Disconnected:', reason);
-      setConnectionStatus('disconnected');
-    };
-
-    const onConnectError = (err) => {
-      console.error('[SOCKET] Connection error:', err.message);
-      setConnectionStatus('error');
-    };
-
-    s.on('connect', onConnect);
-    s.on('disconnect', onDisconnect);
-    s.on('connect_error', onConnectError);
-
-    return () => {
-      s.off('connect', onConnect);
-      s.off('disconnect', onDisconnect);
-      s.off('connect_error', onConnectError);
-    };
-  }, [session]);
-
-  // --- Handle join ---
-  const handleJoin = useCallback(({ username, roomId }) => {
-    setSession({ username, roomId });
+  const rejoinSavedRoom = useCallback((activeSession) => {
+    if (!activeSession) return;
     setConnectionStatus('connecting');
-    socketRef.current.emit('join', { roomId, username });
+    socket.timeout(5000).emit(
+      'join',
+      { roomId: activeSession.roomId, username: activeSession.username },
+      (timeoutError, result) => {
+        if (timeoutError || !result?.success) {
+          setSession(null);
+          setLoginNotice(
+            result?.error || 'Could not reconnect to your room. Please join again.'
+          );
+          setConnectionStatus('error');
+          return;
+        }
+        setConnectionStatus('connected');
+      }
+    );
   }, []);
 
-  // --- Handle leave ---
+  useEffect(() => {
+    const onConnect = () => {
+      setConnectionStatus('connected');
+      rejoinSavedRoom(sessionRef.current);
+    };
+    const onDisconnect = () => setConnectionStatus('disconnected');
+    const onConnectError = () => setConnectionStatus('error');
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('connect_error', onConnectError);
+    socket.connect();
+
+    if (socket.connected) onConnect();
+
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('connect_error', onConnectError);
+    };
+  }, [rejoinSavedRoom]);
+
+  const handleJoin = useCallback(({ username, roomId, createRoom }, done) => {
+    const event = createRoom ? 'create-room' : 'join';
+    const payload = createRoom ? { username } : { username, roomId };
+    setConnectionStatus(socket.connected ? 'connecting' : 'disconnected');
+
+    socket.timeout(8000).emit(event, payload, (timeoutError, result) => {
+      if (timeoutError) {
+        setConnectionStatus(socket.connected ? 'connected' : 'error');
+        done({ success: false, error: 'The server did not respond. Please try again.' });
+        return;
+      }
+      if (!result?.success) {
+        setConnectionStatus(socket.connected ? 'connected' : 'error');
+        done({
+          success: false,
+          error: result?.error || 'Could not join the room. Please try again.',
+        });
+        return;
+      }
+
+      setLoginNotice('');
+      setSession({
+        username,
+        roomId: result.roomId,
+        initialHistory: result.history,
+        initialUsers: result.users,
+      });
+      setConnectionStatus('connected');
+      done({ success: true });
+    });
+  }, []);
+
   const handleLeave = useCallback(() => {
-    if (session) {
-      socketRef.current.emit('leave', { roomId: session.roomId });
-    }
+    socket.emit('leave');
     setSession(null);
-    setConnectionStatus('disconnected');
-  }, [session]);
+    setLoginNotice('');
+    setConnectionStatus(socket.connected ? 'connected' : 'disconnected');
+  }, []);
 
   return (
     <div className="app">
       {session ? (
         <Room
+          key={session.roomId}
           username={session.username}
           roomId={session.roomId}
+          initialHistory={session.initialHistory}
+          initialUsers={session.initialUsers}
           onLeave={handleLeave}
           connectionStatus={connectionStatus}
         />
       ) : (
-        <LoginScreen onJoin={handleJoin} />
+        <LoginScreen onJoin={handleJoin} notice={loginNotice} />
       )}
     </div>
   );

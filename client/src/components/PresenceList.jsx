@@ -14,7 +14,7 @@ export default function PresenceList({ users, currentUser }) {
       <div className="presence-list">
         {users.map((user) => (
           <div
-            key={user.username}
+            key={user.socketId || `${user.username}-${user.joinedAt}`}
             className={`presence-user ${user.username === currentUser ? 'presence-you' : ''}`}
           >
             <span className="presence-dot"></span>

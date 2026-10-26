@@ -15,12 +15,15 @@ import TypingIndicator from './TypingIndicator';
  *
  * Emits: join, leave, message, typing, stop-typing, catch-up
  */
-export default function Room({ username, roomId, onLeave, connectionStatus }) {
-  const [messages, setMessages] = useState([]);
-  const [onlineUsers, setOnlineUsers] = useState([]);
+export default function Room({ username, roomId, initialHistory = [], initialUsers = [], onLeave, connectionStatus }) {
+  const [messages, setMessages] = useState(initialHistory);
+  const [onlineUsers, setOnlineUsers] = useState(initialUsers);
   const [typingUsers, setTypingUsers] = useState([]);
-  const [lastMessageId, setLastMessageId] = useState(0);
+  const [lastMessageId, setLastMessageId] = useState(
+    initialHistory.length ? initialHistory[initialHistory.length - 1].id : 0
+  );
   const [joinError, setJoinError] = useState('');
+  const [copyStatus, setCopyStatus] = useState('');
   const typingDebounceRef = useRef(null);
 
   // --- Socket.IO event listeners ---
@@ -82,6 +85,7 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
       socket.off('user-joined', handleUserJoined);
       socket.off('user-left', handleUserLeft);
       socket.off('join-error', handleJoinError);
+      if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
     };
   }, [username]);
 
@@ -102,11 +106,17 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
   }, [roomId, lastMessageId]);
 
   // --- Handle actions from MessageInput ---
-  const handleInputAction = useCallback((action) => {
+  const handleInputAction = useCallback((action, done) => {
     switch (action.type) {
       case 'send':
-        socket.emit('message', action.payload, (ack) => {
-          if (ack?.error) console.error('[SOCKET] Message error:', ack.error);
+        socket.timeout(5000).emit('message', action.payload, (timeoutError, ack) => {
+          if (timeoutError) {
+            done('Message was not delivered. Please try again.');
+          } else if (ack?.error) {
+            done(ack.error);
+          } else {
+            done();
+          }
         });
         break;
       case 'typing':
@@ -127,12 +137,18 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
     }
   }, [roomId, username]);
 
-  const handleLeave = () => { socket.emit('leave', { roomId, username }); onLeave(); };
+  const handleLeave = () => onLeave();
 
-  const handleCopyLink = () => {
+  const handleCopyLink = async () => {
     const url = `${window.location.origin}?room=${roomId}`;
-    navigator.clipboard.writeText(url);
-    alert('Room link copied to clipboard!');
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyStatus('Link copied!');
+    } catch (error) {
+      console.error('[CLIPBOARD] Could not copy room link:', error);
+      setCopyStatus('Copy failed. Share this code: ' + roomId);
+    }
+    window.setTimeout(() => setCopyStatus(''), 3000);
   };
 
   return (
@@ -141,17 +157,19 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
       <div className="chat-container">
         <div className="room-header">
           <div className="room-title">
-            <span>💬</span>
-            <span>Room: </span>
+            <span aria-hidden="true">💬</span>
+            <span>Room</span>
             <code className="room-code">{roomId}</code>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="room-actions-header">
             <div className={`connection-status status-${connectionStatus}`}>
               <span className="connection-dot"></span>
-              <span style={{ textTransform: 'capitalize' }}>{connectionStatus}</span>
+              <span>{connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Reconnecting…' : 'Offline'}</span>
             </div>
-            <button onClick={handleCopyLink} className="copy-btn" title="Copy room link">📋 Share</button>
-            <button onClick={handleLeave} className="copy-btn" title="Leave room" style={{ color: 'var(--danger)' }}>← Leave</button>
+            <button type="button" onClick={handleCopyLink} className="copy-btn" title="Copy room link">
+              {copyStatus || 'Share invite link'}
+            </button>
+            <button type="button" onClick={handleLeave} className="copy-btn leave-btn">Leave room</button>
           </div>
         </div>
 
@@ -159,10 +177,13 @@ export default function Room({ username, roomId, onLeave, connectionStatus }) {
         <TypingIndicator users={typingUsers} />
 
         {joinError && (
-          <div style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 107, 107, 0.15)', color: 'var(--danger)', fontSize: '0.85rem', textAlign: 'center' }}>{joinError}</div>
+          <div className="room-error" role="alert">
+            <span>{joinError}</span>
+            <button type="button" onClick={handleLeave}>Back to start</button>
+          </div>
         )}
 
-        <MessageInput roomId={roomId} username={username} onSendMessage={handleInputAction} />
+        <MessageInput roomId={roomId} username={username} onSendMessage={handleInputAction} disabled={connectionStatus !== 'connected'} />
       </div>
     </div>
   );

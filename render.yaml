@@ -4,6 +4,10 @@ services:
     runtime: node
     buildCommand: npm install && cd client && npm install && npm run build
     startCommand: node server.js
+    disk:
+      name: collab-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
