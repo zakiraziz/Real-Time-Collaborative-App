@@ -9,7 +9,9 @@ export default function MessageInput({ roomId, username, onSendMessage, disabled
   const [message, setMessage] = useState('');
   const [sendError, setSendError] = useState('');
   const [sending, setSending] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const inputRef = useRef(null);
+  const emojis = ['😊', '😂', '❤️', '👍', '🎉', '👋'];
 
   // Auto-focus the input
   useEffect(() => {
@@ -72,8 +74,43 @@ export default function MessageInput({ roomId, username, onSendMessage, disabled
     );
   };
 
+  const addEmoji = (emoji) => {
+    const updatedMessage = `${message}${emoji}`;
+    setMessage(updatedMessage);
+    emitTyping(updatedMessage);
+    setEmojiPickerOpen(false);
+    inputRef.current?.focus();
+  };
+
   return (
     <form className="message-input-container" onSubmit={handleSubmit}>
+      <div className="emoji-picker">
+        <button
+          type="button"
+          className="emoji-toggle"
+          aria-label={emojiPickerOpen ? 'Close emoji picker' : 'Add emoji'}
+          aria-expanded={emojiPickerOpen}
+          disabled={disabled}
+          onClick={() => setEmojiPickerOpen((open) => !open)}
+        >
+          ☺
+        </button>
+        {emojiPickerOpen && (
+          <div className="emoji-menu" role="group" aria-label="Choose an emoji">
+            {emojis.map((emoji) => (
+              <button
+                type="button"
+                key={emoji}
+                className="emoji-option"
+                aria-label={`Add ${emoji}`}
+                onClick={() => addEmoji(emoji)}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <input
         ref={inputRef}
         className="message-input"

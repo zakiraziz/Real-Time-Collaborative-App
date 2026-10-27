@@ -51,6 +51,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 /* ===== Copy button ===== */
 .copy-btn { margin-top: 0.75rem; padding: 0.4rem 0.8rem; font-size: 0.8rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); cursor: pointer; transition: var(--transition); }
 .copy-btn:hover { background: var(--primary); color: #fff; }
+.copy-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .leave-btn { color: var(--danger); }
 .room-error { padding: 0.75rem 1rem; background: rgba(255, 107, 107, 0.12); color: var(--danger); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.75rem; font-size: 0.88rem; }
@@ -77,6 +78,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .room-actions-header { display: flex; align-items: center; gap: 0.75rem; }
 .room-header .room-title { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; }
 .room-header .room-code { font-family: 'Courier New', monospace; font-size: 0.9rem; color: var(--accent); background: var(--surface); padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); }
+.message-search { padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.message-search label { color: var(--text-muted); font-size: 0.8rem; font-weight: 600; }
+.message-search input { flex: 1; min-width: 180px; padding: 0.55rem 0.75rem; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.search-count { color: var(--text-muted); font-size: 0.78rem; }
 .connection-status { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
 .connection-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .status-connected .connection-dot { background: var(--accent); }
@@ -109,6 +114,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
 /* ===== Message Input ===== */
 .message-input-container { padding: 1rem 1.5rem; background: var(--surface-2); border-top: 1px solid var(--border); display: flex; gap: 0.75rem; align-items: center; }
+.emoji-picker { position: relative; }
+.emoji-toggle { width: 42px; height: 42px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text); font-size: 1.2rem; cursor: pointer; }
+.emoji-menu { position: absolute; z-index: 2; bottom: calc(100% + 0.6rem); left: 0; display: flex; gap: 0.2rem; padding: 0.4rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); }
+.emoji-option { width: 36px; height: 36px; border: 0; border-radius: 6px; background: transparent; font-size: 1.1rem; cursor: pointer; }
+.emoji-option:hover { background: var(--surface-2); }
 .message-input { flex: 1; padding: 0.75rem 1.25rem; background: var(--surface); border: 1.5px solid var(--border); border-radius: 999px; font-size: 0.95rem; color: var(--text); outline: none; transition: var(--transition); resize: none; min-height: 42px; max-height: 120px; }
 .message-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.15); }
 .message-input::placeholder { color: var(--text-muted); }
@@ -118,7 +128,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .send-error { flex-basis: 100%; color: var(--danger); font-size: 0.8rem; }
 
 /* ===== Responsive ===== */
-@media (max-width: 768px) { .room-view { flex-direction: column; height: 100dvh; padding: 0.5rem; gap: 0.5rem; } .presence-sidebar { width: 100%; max-width: none; min-width: 0; height: 92px; min-height: 92px; } .presence-list { display: flex; overflow-x: auto; overflow-y: hidden; padding: 0.5rem; gap: 0.35rem; } .presence-user { flex: 0 0 auto; margin: 0; } .message-bubble { max-width: 85%; } .room-header { padding: 0.75rem; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; } .room-header .room-title { font-size: 0.95rem; gap: 0.45rem; } .room-actions-header { flex-wrap: wrap; gap: 0.35rem; } .copy-btn { margin-top: 0.25rem; } .message-input-container { padding: 0.75rem; } }
+@media (max-width: 768px) { .room-view { flex-direction: column; height: 100dvh; padding: 0.5rem; gap: 0.5rem; } .presence-sidebar { width: 100%; max-width: none; min-width: 0; height: 92px; min-height: 92px; } .presence-list { display: flex; overflow-x: auto; overflow-y: hidden; padding: 0.5rem; gap: 0.35rem; } .presence-user { flex: 0 0 auto; margin: 0; } .message-bubble { max-width: 85%; } .room-header { padding: 0.75rem; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; } .room-header .room-title { font-size: 0.95rem; gap: 0.45rem; } .room-actions-header { flex-wrap: wrap; gap: 0.35rem; } .copy-btn { margin-top: 0.25rem; } .message-input-container { padding: 0.75rem; } .message-search { padding: 0.65rem; } .emoji-menu { left: -0.5rem; } }
 @media (max-width: 420px) { .login-card { padding: 1.5rem; } .room-actions { flex-direction: column; gap: 0.6rem; } .room-header .room-title { width: 100%; } .room-actions-header { justify-content: space-between; width: 100%; } .connection-status { font-size: 0.72rem; } .copy-btn { font-size: 0.72rem; } }
 
 /* ===== Utility ===== */

@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
  * Auto-scrolls to the bottom, but preserves scroll position when the user
  * has scrolled up (to avoid auto-jumping while reading history).
  */
-export default function MessageList({ messages, currentUser }) {
+export default function MessageList({ messages, currentUser, emptyMessage }) {
   const listRef = useRef(null);
   const isAtBottomRef = useRef(true);
 
@@ -32,7 +32,7 @@ export default function MessageList({ messages, currentUser }) {
     <div className="message-list" ref={listRef} onScroll={handleScroll}>
       {messages.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-          <p>No messages yet. Start the conversation! 💬</p>
+          <p>{emptyMessage || 'No messages yet. Start the conversation! 💬'}</p>
         </div>
       ) : (
         messages.map((msg) => (

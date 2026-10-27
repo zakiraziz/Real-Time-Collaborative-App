@@ -24,6 +24,8 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
   );
   const [joinError, setJoinError] = useState('');
   const [copyStatus, setCopyStatus] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const typingDebounceRef = useRef(null);
 
   // --- Socket.IO event listeners ---
@@ -152,6 +154,30 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
     window.setTimeout(() => setCopyStatus(''), 3000);
   };
 
+  const handleExport = () => {
+    const transcript = messages
+      .map((message) => {
+        const time = new Date(message.timestamp).toLocaleString();
+        return `[${time}] ${message.username}: ${message.content}`;
+      })
+      .join('\n');
+    const file = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
+    const downloadUrl = URL.createObjectURL(file);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `chat-${roomId}.txt`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+  };
+
+  const filteredMessages = searchQuery.trim()
+    ? messages.filter((message) =>
+        `${message.username} ${message.content}`
+          .toLowerCase()
+          .includes(searchQuery.trim().toLowerCase())
+      )
+    : messages;
+
   return (
     <div className="room-view">
       <PresenceList users={onlineUsers} currentUser={username} />
@@ -167,6 +193,26 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
               <span className="connection-dot"></span>
               <span>{connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Reconnecting…' : 'Offline'}</span>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchOpen((open) => !open);
+                setSearchQuery('');
+              }}
+              className="copy-btn"
+              aria-expanded={searchOpen}
+            >
+              {searchOpen ? 'Close search' : 'Search'}
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="copy-btn"
+              disabled={messages.length === 0}
+              title={messages.length ? 'Download chat transcript' : 'Send a message before downloading a transcript'}
+            >
+              Download chat
+            </button>
             <button type="button" onClick={handleCopyLink} className="copy-btn" title="Copy room link">
               {copyStatus || 'Share invite link'}
             </button>
@@ -174,7 +220,29 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
           </div>
         </div>
 
-        <MessageList messages={messages} currentUser={username} />
+        {searchOpen && (
+          <div className="message-search">
+            <label htmlFor="message-search-input">Search this conversation</label>
+            <input
+              id="message-search-input"
+              type="search"
+              placeholder="Search messages or names"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              autoFocus
+            />
+            {searchQuery && (
+              <span className="search-count">
+                {filteredMessages.length} {filteredMessages.length === 1 ? 'match' : 'matches'}
+              </span>
+            )}
+          </div>
+        )}
+        <MessageList
+          messages={filteredMessages}
+          currentUser={username}
+          emptyMessage={searchQuery ? 'No messages match your search.' : undefined}
+        />
         <TypingIndicator users={typingUsers} />
 
         {joinError && (
