@@ -25,6 +25,10 @@ six-character code, and chat while seeing who is online.
 - Create a room or join with a code; shared invite links prefill the code.
 - Real-time chat, message history, online presence, and typing indicators.
 - Reconnects to the current room and reports connection/message errors.
+- Search and filter the conversation, copy individual messages, and download a
+  plain-text transcript.
+- Light and dark themes, date separators, unread-message navigation, and
+  keyboard shortcuts (`Ctrl/Cmd + K` to search, `Esc` to close search).
 - SQLite persistence and a `/health` endpoint.
 
 ## Deployment

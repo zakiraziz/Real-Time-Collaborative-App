@@ -23,10 +23,42 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
     initialHistory.length ? Math.max(...initialHistory.map((message) => message.id)) : 0
   );
   const [joinError, setJoinError] = useState('');
-  const [copyStatus, setCopyStatus] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [theme, setTheme] = useState(() => localStorage.getItem('collab-theme') || 'dark');
+  const [notice, setNotice] = useState('');
   const typingDebounceRef = useRef(null);
+  const noticeTimerRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  const showNotice = useCallback((message) => {
+    setNotice(message);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setNotice(''), 2600);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('collab-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  useEffect(() => {
+    const handleShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+      if (event.key === 'Escape') {
+        setSearchOpen(false);
+        setSearchQuery('');
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, []);
 
   // --- Socket.IO event listeners ---
   useEffect(() => {
@@ -83,6 +115,7 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
       socket.off('user-left', handleUserLeft);
       socket.off('join-error', handleJoinError);
       if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
     };
   }, [username]);
 
@@ -146,12 +179,21 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
     const url = `${window.location.origin}?room=${roomId}`;
     try {
       await navigator.clipboard.writeText(url);
-      setCopyStatus('Link copied!');
+      showNotice('Invite link copied to clipboard');
     } catch (error) {
       console.error('[CLIPBOARD] Could not copy room link:', error);
-      setCopyStatus('Copy failed. Share this code: ' + roomId);
+      showNotice(`Copy failed — share room code ${roomId}`);
     }
-    window.setTimeout(() => setCopyStatus(''), 3000);
+  };
+
+  const handleCopyMessage = async (content) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      showNotice('Message copied');
+    } catch (error) {
+      console.error('[CLIPBOARD] Could not copy message:', error);
+      showNotice('Could not copy this message');
+    }
   };
 
   const handleExport = () => {
@@ -168,6 +210,7 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
     link.download = `chat-${roomId}.txt`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    showNotice('Chat transcript downloaded');
   };
 
   const filteredMessages = searchQuery.trim()
@@ -179,17 +222,19 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
     : messages;
 
   return (
-    <div className="room-view">
+    <div className={`room-view theme-${theme}`}>
       <PresenceList users={onlineUsers} currentUser={username} />
       <div className="chat-container">
         <div className="room-header">
           <div className="room-title">
-            <span aria-hidden="true">💬</span>
-            <span>Room</span>
-            <code className="room-code">{roomId}</code>
+            <span className="brand-mark" aria-hidden="true">✦</span>
+            <div className="room-title-copy">
+              <strong>CollabSpace</strong>
+              <span>Room <code className="room-code">{roomId}</code></span>
+            </div>
           </div>
           <div className="room-actions-header">
-            <div className={`connection-status status-${connectionStatus}`}>
+            <div className={`connection-status status-${connectionStatus}`} role="status" aria-live="polite">
               <span className="connection-dot"></span>
               <span>{connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Reconnecting…' : 'Offline'}</span>
             </div>
@@ -206,6 +251,15 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
             </button>
             <button
               type="button"
+              onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
+              className="copy-btn"
+              aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            >
+              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </button>
+            <button
+              type="button"
               onClick={handleExport}
               className="copy-btn"
               disabled={messages.length === 0}
@@ -214,16 +268,25 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
               Download chat
             </button>
             <button type="button" onClick={handleCopyLink} className="copy-btn" title="Copy room link">
-              {copyStatus || 'Share invite link'}
+              Share invite
             </button>
             <button type="button" onClick={handleLeave} className="copy-btn leave-btn">Leave room</button>
           </div>
+        </div>
+
+        <div className="conversation-toolbar">
+          <div>
+            <strong>Conversation</strong>
+            <span>{messages.length} {messages.length === 1 ? 'message' : 'messages'} · {onlineUsers.length} online</span>
+          </div>
+          <span className="privacy-label"><span aria-hidden="true">●</span> Room members only</span>
         </div>
 
         {searchOpen && (
           <div className="message-search">
             <label htmlFor="message-search-input">Search this conversation</label>
             <input
+              ref={searchInputRef}
               id="message-search-input"
               type="search"
               placeholder="Search messages or names"
@@ -242,8 +305,10 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
           messages={filteredMessages}
           currentUser={username}
           emptyMessage={searchQuery ? 'No messages match your search.' : undefined}
+          onCopyMessage={handleCopyMessage}
         />
         <TypingIndicator users={typingUsers} />
+        {notice && <div className="toast-notice" role="status" aria-live="polite">{notice}</div>}
 
         {joinError && (
           <div className="room-error" role="alert">
