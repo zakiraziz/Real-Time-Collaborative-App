@@ -99,7 +99,7 @@ const getMessagesSinceStmt = db.prepare(`
   SELECT id, room_id, user_id, username, content, timestamp, client_id, version
   FROM messages
   WHERE room_id = ? AND id > ?
-  ORDER BY timestamp ASC, id ASC
+  ORDER BY id ASC
   LIMIT ?
 `);
 

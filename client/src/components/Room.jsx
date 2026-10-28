@@ -30,6 +30,7 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
   const typingDebounceRef = useRef(null);
   const noticeTimerRef = useRef(null);
   const searchInputRef = useRef(null);
+  const catchUpInProgressRef = useRef(false);
 
   const showNotice = useCallback((message) => {
     setNotice(message);
@@ -67,7 +68,10 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
     };
 
     const handleHistoryCatchUp = (missed) => {
-      if (!missed || missed.length === 0) return;
+      if (!Array.isArray(missed) || missed.length === 0) {
+        catchUpInProgressRef.current = false;
+        return;
+      }
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => m.id));
         const newMessages = missed.filter((m) => !existingIds.has(m.id));
@@ -77,6 +81,12 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
         });
         return merged;
       });
+      if (missed.length === 100) {
+        const nextMessageId = missed[missed.length - 1].id;
+        socket.emit('catch-up', { roomId, lastMessageId: nextMessageId });
+      } else {
+        catchUpInProgressRef.current = false;
+      }
     };
 
     const handleNewMessage = (msg) => {
@@ -117,7 +127,7 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
       if (typingDebounceRef.current) clearTimeout(typingDebounceRef.current);
       if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
     };
-  }, [username]);
+  }, [roomId, username]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -129,13 +139,17 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
   const wasConnectedRef = useRef(false);
   useEffect(() => {
     const handleConnect = () => {
-      if (wasConnectedRef.current && lastMessageId > 0) {
+      if (wasConnectedRef.current && lastMessageId > 0 && !catchUpInProgressRef.current) {
         // We were previously connected — request any missed messages
+        catchUpInProgressRef.current = true;
         socket.emit('catch-up', { roomId, lastMessageId });
       }
       wasConnectedRef.current = true;
     };
-    const handleDisconnect = () => { wasConnectedRef.current = false; };
+    const handleDisconnect = () => {
+      wasConnectedRef.current = false;
+      catchUpInProgressRef.current = false;
+    };
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     return () => { socket.off('connect', handleConnect); socket.off('disconnect', handleDisconnect); };
