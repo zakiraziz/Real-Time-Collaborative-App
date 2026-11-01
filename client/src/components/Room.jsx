@@ -139,7 +139,7 @@ export default function Room({ username, roomId, initialHistory = [], initialUse
   const wasConnectedRef = useRef(false);
   useEffect(() => {
     const handleConnect = () => {
-      if (wasConnectedRef.current && lastMessageId > 0 && !catchUpInProgressRef.current) {
+      if (wasConnectedRef.current && !catchUpInProgressRef.current) {
         // We were previously connected — request any missed messages
         catchUpInProgressRef.current = true;
         socket.emit('catch-up', { roomId, lastMessageId });
